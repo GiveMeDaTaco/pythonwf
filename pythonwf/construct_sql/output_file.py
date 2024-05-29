@@ -1,0 +1,6 @@
+class OutputFileSQLConstructor:
+    def __init__(self):
+        ...
+
+    def generate_output_file_sql(self):
+        ...
