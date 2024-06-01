@@ -3,6 +3,9 @@ from pythonwf.connections.teradata import TeradataHandler
 
 import pandas as pd
 from collections import OrderedDict
+import openpyxl
+from openpyxl.styles import Font, PatternFill
+from datetime import datetime
 
 
 class Waterfall:
@@ -12,12 +15,18 @@ class Waterfall:
             offer_code,
             campaign_planner,
             lead,
-
+            waterfall_location,
             sql_constructor: SQLConstructor,
             teradata_connection: TeradataHandler
     ):
         self._sqlconstructor = SQLConstructor
         self._teradata_connection = teradata_connection
+
+        self.offer_code = offer_code
+        self.campaign_planner = campaign_planner
+        self.lead = lead
+        self._sql_constructor = sql_constructor
+        self.waterfall_location = waterfall_location
 
         self.conditions = conditions
 
@@ -126,29 +135,65 @@ class Waterfall:
             self._compiled_dataframes[identifier] = df
 
     def step3_generate_report(self):
-        # Ensure the 'column_name' column in self._conditions is a string for compatibility
-        self._conditions['column_name'] = self._conditions['column_name'].astype(str)
+        # Create a new workbook and select the active worksheet
+        wb = openpyxl.Workbook()
+        ws = wb.active
 
-        # Loop through each dataframe in self._compiled_dataframes and merge with self._conditions
-        for identifier, df in self._compiled_dataframes.items():
-            # Reset index of the dataframe to prepare for merge
-            df_reset = df.reset_index()
+        # Fill the cells according to the requirements
+        ws['A1'] = f'[{self.offer_code}] CP: {self.campaign_planner} LEAD: {self.lead}'
+        ws['A1'].font = Font(size=16)
+        ws['A2'] = 'Check #'
+        ws['A3'] = 'Check'
+        ws['A4'] = 'Check Description'
+        ws['C3'] = 'Starting Population'
 
-            # Rename the 'Index' column to 'column_name'
-            df_reset = df_reset.rename(columns={'Index': 'column_name'})
+        # Fill the values from conditions_df
+        for i, (index, row) in enumerate(self._conditions.iterrows(), start=4):
+            ws[f'B{i}'] = row['column_name']
+            ws[f'C{i}'] = row['description']
 
-            # Merge with the conditions dataframe
-            merged_df = pd.merge(df_reset, self._conditions, on='column_name', how='left')
+        # Format the headers in row 2
+        light_blue_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')
+        for cell in ws[2]:
+            cell.fill = light_blue_fill
 
-            # Save the merged dataframe back to the compiled dataframes
-            self._compiled_dataframes[identifier] = merged_df
+        # Insert a blank column with gray background
+        col_index = 4
+        gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid')
+        ws.cell(row=4, column=col_index).fill = gray_fill
 
-        # Combine all the merged dataframes into a single report
-        final_report = pd.concat(self._compiled_dataframes.values(), keys=self._compiled_dataframes.keys())
+        # Insert data from compiled_dataframes with the required formatting
+        row_index = 4
+        channel_groups = {}
+        for identifier in self._compiled_dataframes.keys():
+            channel = identifier.split('_')[0]
+            if channel not in channel_groups:
+                channel_groups[channel] = []
+            channel_groups[channel].append(identifier)
 
-        # You can also return the final report or save it as needed
-        self._combined_df = final_report
+        check_number = 1
+        for channel, identifiers in channel_groups.items():
+            for identifier in identifiers:
+                df = self._compiled_dataframes[identifier]
+                col_index += 1  # Move to the next column after the blank column
+                for col_num, col_name in enumerate(df.columns, start=col_index):
+                    ws.cell(row=2, column=col_num).value = col_name  # Fill the column headers in row 2
+                    ws.cell(row=2, column=col_num).fill = light_blue_fill  # Set header background to light blue
+                    for df_row_num, value in enumerate(df[col_name], start=4):
+                        ws.cell(row=df_row_num, column=col_num).value = value
+                        ws.cell(row=df_row_num, column=1).value = check_number  # Number the rows
+                        check_number += 1
 
+                col_index += len(df.columns)  # Move to the next blank column after the dataframe
 
+            row_index += len(df) + 1  # Move the row index for the next dataframe
 
+            # Insert a blank row for new channel
+            ws.cell(row=row_index, column=1).value = channel
+            ws.cell(row=row_index, column=1).fill = light_blue_fill
+            ws.cell(row=row_index, column=2).fill = light_blue_fill
+            ws.cell(row=row_index, column=3).fill = light_blue_fill
+            row_index += 1
 
+        # Save the workbook to the specified filename
+        wb.save(f'{self.waterfall_location}/{self.offer_code}_Waterfall_{datetime.now().strftime("%Y%m%d")}.xlsx')

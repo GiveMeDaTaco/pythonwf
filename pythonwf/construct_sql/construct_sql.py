@@ -221,7 +221,7 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
     @unique_identifiers.setter
     def unique_identifiers(self, value):
         self._unique_identifiers = value
-        self._parsed_unique_identifiers = self._parse_unique_identifiers()
+        self._parse_unique_identifiers()
 
     @property
     def waterfall(self):
