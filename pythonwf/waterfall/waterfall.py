@@ -1,6 +1,8 @@
+from typing import Dict, List, Any, Optional
 from pythonwf.construct_sql.construct_sql import SQLConstructor
 from pythonwf.connections.teradata import TeradataHandler
-
+from pythonwf.logging.logging import call_logger, CustomLogger
+from pythonwf.eligibility.eligibility import Eligible
 import pandas as pd
 from collections import OrderedDict
 import openpyxl
@@ -9,23 +11,56 @@ from datetime import datetime
 
 
 class Waterfall:
+    """
+    A class to generate and analyze waterfall reports for campaign eligibility checks.
+
+    Attributes:
+        conditions (pd.DataFrame): Conditions for eligibility checks.
+        offer_code (str): The offer code.
+        campaign_planner (str): The campaign planner.
+        lead (str): The lead person.
+        waterfall_location (str): The location to save the waterfall report.
+        _sqlconstructor (SQLConstructor): An instance of SQLConstructor to build SQL queries.
+        _teradata_connection (Optional[TeradataHandler]): The Teradata connection handler.
+        _column_names (OrderedDict): Column names for the waterfall report.
+        _query_results (Dict[str, List[pd.DataFrame]]): Query results for each identifier.
+        _compiled_dataframes (OrderedDict): Compiled dataframes for each identifier.
+        _starting_population (Optional[int]): The starting population for the waterfall analysis.
+        _combined_df (Optional[pd.DataFrame]): Combined dataframe for the waterfall report.
+    """
+
     def __init__(
             self,
-            conditions,
-            offer_code,
-            campaign_planner,
-            lead,
-            waterfall_location,
+            conditions: Dict[str, Dict[str, Any]],
+            offer_code: str,
+            campaign_planner: str,
+            lead: str,
+            waterfall_location: str,
             sql_constructor: SQLConstructor,
-            teradata_connection: TeradataHandler
-    ):
-        self._sqlconstructor = SQLConstructor
+            logger: CustomLogger,
+            teradata_connection: Optional[TeradataHandler] = None
+    ) -> None:
+        """
+        Initializes the Waterfall class with the provided parameters.
+
+        Args:
+            conditions (Dict[str, Dict[str, Any]]): Conditions for eligibility checks.
+            offer_code (str): The offer code.
+            campaign_planner (str): The campaign planner.
+            lead (str): The lead person.
+            waterfall_location (str): The location to save the waterfall report.
+            sql_constructor (SQLConstructor): An instance of SQLConstructor to build SQL queries.
+            teradata_connection (Optional[TeradataHandler]): The Teradata connection handler.
+        """
+        self.logger = logger
+        self.current_date = datetime.now().strftime("%Y%m%d")
+
+        self._sqlconstructor = sql_constructor
         self._teradata_connection = teradata_connection
 
         self.offer_code = offer_code
         self.campaign_planner = campaign_planner
         self.lead = lead
-        self._sql_constructor = sql_constructor
         self.waterfall_location = waterfall_location
 
         self.conditions = conditions
@@ -45,18 +80,30 @@ class Waterfall:
         self._starting_population = None
         self._combined_df = None
 
-    @property
-    def conditions(self):
-        return self._conditions
+    @classmethod
+    def from_eligible(cls, eligibility: Eligible, waterfall_location: str) -> 'Waterfall':
+        conditions = cls._prepare_conditions(eligibility.conditions)
+        offer_code = eligibility.offer_code
+        campaign_planner = eligibility.campaign_planner
+        lead = eligibility.lead
+        sql_constructor = eligibility._sqlconstructor
+        logger = eligibility.logger
+        teradata_connection = eligibility._teradata_connection
 
-    @conditions.setter
-    def conditions(self, value):
-        value = self._prepare_conditions(value)
-        self._conditions = value
+        return cls(conditions, offer_code, campaign_planner, lead, waterfall_location, sql_constructor, logger, teradata_connection)
 
-    @staticmethod
-    def _prepare_conditions(conditions):
-        rows = []
+    @classmethod
+    def _prepare_conditions(cls, conditions: dict) -> dict:
+        """
+        Prepares the conditions by transforming them into a dictionary.
+
+        Args:
+            conditions (Dict[str, Dict[str, Any]]): Conditions for eligibility checks.
+
+        Returns:
+            dict: The prepared conditions as a dictionary.
+        """
+        result_dict = {}
 
         for channel, templates in conditions.items():
             for template, checks in templates.items():
@@ -67,59 +114,122 @@ class Waterfall:
 
                     if column_name is not None:
                         modified_description = f'[{template}] {description}' if description else None
-                        rows.append({'column_name': column_name, 'description': modified_description, 'sql': sql})
+                        result_dict[column_name] = {
+                            'description': modified_description,
+                            'sql': sql
+                        }
 
-        df = pd.DataFrame(rows)
-        return df
+        return result_dict
+
+    @property
+    def conditions(self) -> dict:
+        """Getter for conditions."""
+        return self._conditions
+
+    @conditions.setter
+    def conditions(self, value: Dict[str, Dict[str, Any]]) -> None:
+        """Setter for conditions."""
+        self._conditions = value
 
 
-    def _save_results(self, identifier, data):
+
+    def _save_results(self, identifier: str, data: pd.DataFrame) -> None:
+        """
+        Saves the results of a query to the _query_results dictionary.
+
+        Args:
+            identifier (str): The identifier for the query results.
+            data (pd.DataFrame): The data to save.
+        """
         if self._query_results.get(identifier) is None:
-            self._query_results[identifier] = list()
+            self._query_results[identifier] = []
         self._query_results[identifier].append(data)
 
-    def _calculate_regain(self):
+    @call_logger()
+    def _calculate_regain(self) -> None:
+        """
+        Calculates the regain SQL and saves the results to the _query_results dictionary.
+        """
         queries = self._sqlconstructor.waterfall.generate_regain_sql()
-        for identifier, query in queries:
-            df = self._teradata_connection.to_pandas(query)
-            df['Index'] = self._column_names.get('regain')
-            df = df.set_index('Index')
-            self._save_results(identifier, df)
 
-    def _calculate_incremental_drops(self):
+        # save queries
+        self.logger.info(f'{self.__class__}._calculate_regain {queries=}')
+
+        for identifier, query in queries.items():
+            if self._teradata_connection is not None:
+                df = self._teradata_connection.to_pandas(query)
+                df['Index'] = self._column_names.get('regain').format(identifier=identifier)
+                df = df.set_index('Index')
+                self._save_results(identifier, df)
+
+    @call_logger()
+    def _calculate_incremental_drops(self) -> None:
+        """
+        Calculates the incremental drops SQL and saves the results to the _query_results dictionary.
+        """
         queries = self._sqlconstructor.waterfall.generate_incremental_drops_sql()
-        for identifier, query in queries:
-            df = self._teradata_connection.to_pandas(query)
-            df['Index'] = self._column_names.get('increm_drops')
-            df = df.set_index('Index')
-            self._save_results(identifier, df)
 
-    def _calculate_unique_drops(self):
+        # save queries
+        self.logger.info(f'{self.__class__}._calculate_incremental_drops {queries=}')
+
+        for identifier, query in queries.items():
+            if self._teradata_connection is not None:
+                df = self._teradata_connection.to_pandas(query)
+                df['Index'] = self._column_names.get('increm_drops').format(identifier=identifier)
+                df = df.set_index('Index')
+                self._save_results(identifier, df)
+
+    @call_logger()
+    def _calculate_unique_drops(self) -> None:
+        """
+        Calculates the unique drops SQL and saves the results to the _query_results dictionary.
+        """
         queries = self._sqlconstructor.waterfall.generate_unique_drops_sql()
-        for identifier, query in queries:
-            df = self._teradata_connection.to_pandas(query)
-            df['Index'] = self._column_names.get('unique_drops')
-            df = df.set_index('Index')
-            self._save_results(identifier, df)
 
-    def _calculate_remaining(self):
-        queries = self._sqlconstructor.waterfall.generate_remaining_sql
-        for identifier, query in queries:
-            df = self._teradata_connection.to_pandas(query)
-            df['Index'] = self._column_names.get('remaining')
-            df = df.set_index('Index')
-            self._save_results(identifier, df)
+        # save queries
+        self.logger.info(f'{self.__class__}._calculate_unique_drops {queries=}')
 
-    def step1_analyze_eligibility(self):
+        for identifier, query in queries.items():
+            if self._teradata_connection is not None:
+                df = self._teradata_connection.to_pandas(query)
+                df['Index'] = self._column_names.get('unique_drops').format(identifier=identifier)
+                df = df.set_index('Index')
+                self._save_results(identifier, df)
 
-        # NOTE: the order matters here, as that determines what order of the list in _query_results
+    @call_logger()
+    def _calculate_remaining(self) -> None:
+        """
+        Calculates the remaining SQL and saves the results to the _query_results dictionary.
+        """
+        queries = self._sqlconstructor.waterfall.generate_remaining_sql()
+
+        # save queries
+        self.logger.info(f'{self.__class__}._calculate_remaining {queries=}')
+
+        for identifier, query in queries.items():
+            if self._teradata_connection is not None:
+                df = self._teradata_connection.to_pandas(query)
+                df['Index'] = self._column_names.get('remaining').format(identifier=identifier)
+                df = df.set_index('Index')
+                self._save_results(identifier, df)
+
+    @call_logger()
+    def _step1_analyze_eligibility(self) -> None:
+        """
+        Analyzes the eligibility by calculating unique drops, incremental drops, regain, and remaining records.
+        The order of calculations is important for correct results.
+        """
         self._calculate_unique_drops()
         self._calculate_incremental_drops()
         self._calculate_regain()
         self._calculate_remaining()
 
-    def step2_create_dataframes(self):
-        for identifier, dfs in self._query_results:
+    @call_logger
+    def _step2_create_dataframes(self) -> None:
+        """
+        Creates dataframes from the query results and compiles them into a dictionary.
+        """
+        for identifier, dfs in self._query_results.items():
             df = pd.concat(dfs, axis=1).transpose()
 
             unique_drop = self._column_names.get('unique_drops').format(identifier=identifier)
@@ -131,69 +241,69 @@ class Waterfall:
             self._starting_population = df.loc[0, increm_drop] + df.loc[0, remaining]
             df[cumul_drop] = self._starting_population - df[remaining]
 
-            df = df[unique_drop, increm_drop, cumul_drop, regain, remaining]
+            df = df[[unique_drop, increm_drop, cumul_drop, regain, remaining]]
             self._compiled_dataframes[identifier] = df
 
-    def step3_generate_report(self):
-        # Create a new workbook and select the active worksheet
-        wb = openpyxl.Workbook()
-        ws = wb.active
+    @call_logger
+    def _step3_create_excel(self):
+        # Create a Pandas Excel writer using XlsxWriter as the engine
+        writer = pd.ExcelWriter(f'{self.waterfall_location}/{self.offer_code}_Waterfall_{self.current_date}.xlsx', engine='xlsxwriter')
 
-        # Fill the cells according to the requirements
-        ws['A1'] = f'[{self.offer_code}] CP: {self.campaign_planner} LEAD: {self.lead}'
-        ws['A1'].font = Font(size=16)
-        ws['A2'] = 'Check #'
-        ws['A3'] = 'Check'
-        ws['A4'] = 'Check Description'
-        ws['C3'] = 'Starting Population'
+        # Write the first dataframe values starting from cell A4
+        pd.DataFrame(self.conditions).to_excel(writer, sheet_name='Waterfall', startrow=3, header=False, index=False)
 
-        # Fill the values from conditions_df
-        for i, (index, row) in enumerate(self._conditions.iterrows(), start=4):
-            ws[f'B{i}'] = row['column_name']
-            ws[f'C{i}'] = row['description']
+        # Write other dataframes starting from appropriate columns
+        start_col = 4
+        for key, df in self._query_results.items():
+            df.columns.name = key
+            df.to_excel(writer, sheet_name='Waterfall', startrow=3, startcol=start_col, header=False, index=False)
+            start_col += len(df.columns) + 1
 
-        # Format the headers in row 2
-        light_blue_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')
-        for cell in ws[2]:
-            cell.fill = light_blue_fill
+        # Access the workbook and worksheet objects
+        workbook = writer.book
+        worksheet = writer.sheets['Waterfall']
 
-        # Insert a blank column with gray background
-        col_index = 4
-        gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid')
-        ws.cell(row=4, column=col_index).fill = gray_fill
+        # Insert blank row when channel name changes and rename values in column A
+        df_combined = pd.concat([self.conditions] + list(self._query_results.values()), ignore_index=True)
+        df_combined.reset_index(drop=True, inplace=True)
 
-        # Insert data from compiled_dataframes with the required formatting
-        row_index = 4
-        channel_groups = {}
-        for identifier in self._compiled_dataframes.keys():
-            channel = identifier.split('_')[0]
-            if channel not in channel_groups:
-                channel_groups[channel] = []
-            channel_groups[channel].append(identifier)
+        channel_name_prev = ''
+        for idx, row in df_combined.iterrows():
+            if pd.isna(row['column_name']):
+                continue
+            channel_name, template, check_number = row['column_name'].split('_', 2)
+            if channel_name != channel_name_prev and idx != 0:
+                worksheet.write_blank(idx + 4, 0, '', workbook.add_format({'bg_color': 'white'}))
+            worksheet.write(idx + 4, 0, check_number)
+            channel_name_prev = channel_name
 
-        check_number = 1
-        for channel, identifiers in channel_groups.items():
-            for identifier in identifiers:
-                df = self._compiled_dataframes[identifier]
-                col_index += 1  # Move to the next column after the blank column
-                for col_num, col_name in enumerate(df.columns, start=col_index):
-                    ws.cell(row=2, column=col_num).value = col_name  # Fill the column headers in row 2
-                    ws.cell(row=2, column=col_num).fill = light_blue_fill  # Set header background to light blue
-                    for df_row_num, value in enumerate(df[col_name], start=4):
-                        ws.cell(row=df_row_num, column=col_num).value = value
-                        ws.cell(row=df_row_num, column=1).value = check_number  # Number the rows
-                        check_number += 1
+        # Add header information
+        header = f'[{self.offer_code}] [CP: {self.campaign_planner}] [LEAD: {self.lead}] [DATE: {self.current_date}]'
+        worksheet.write('A1', header, workbook.add_format({'font_size': 18}))
 
-                col_index += len(df.columns)  # Move to the next blank column after the dataframe
+        # Add values to specific cells
+        worksheet.write('A2', 'Checks')
+        worksheet.write('B2', 'Criteria')
+        worksheet.write('C2', 'Description')
+        worksheet.write('C3', 'Starting Population')
 
-            row_index += len(df) + 1  # Move the row index for the next dataframe
+        # Add values to row 2 for other dataframes
+        start_col = 4
+        for key, df in self._query_results.items():
+            for col_num, value in enumerate(df.columns):
+                worksheet.write(1, start_col + col_num, value, workbook.add_format({'bg_color': '#87CEEB'}))
+            start_col += len(df.columns) + 1
 
-            # Insert a blank row for new channel
-            ws.cell(row=row_index, column=1).value = channel
-            ws.cell(row=row_index, column=1).fill = light_blue_fill
-            ws.cell(row=row_index, column=2).fill = light_blue_fill
-            ws.cell(row=row_index, column=3).fill = light_blue_fill
-            row_index += 1
+        # Formatting
+        tan_format = workbook.add_format({'bg_color': '#D2B48C'})
+        gray_format = workbook.add_format({'bg_color': '#D3D3D3'})
 
-        # Save the workbook to the specified filename
-        wb.save(f'{self.waterfall_location}/{self.offer_code}_Waterfall_{datetime.now().strftime("%Y%m%d")}.xlsx')
+        for row in range(3, len(df_combined) + 4):
+            worksheet.write(row, 0, '', tan_format)
+
+        for col in range(4, start_col, len(df.columns) + 1):
+            for row in range(3, len(df_combined) + 4):
+                worksheet.write(row, col - 1, '', gray_format)
+
+        # Save the Excel file
+        writer.save()

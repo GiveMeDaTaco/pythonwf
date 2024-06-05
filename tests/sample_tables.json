@@ -1,0 +1,41 @@
+{
+  "tables": [
+    {
+      "table_name": "schema1.table1",
+      "join_type": "FROM",
+      "alias": "a",
+      "where_conditions": "a.column1 IS NOT NULL AND a.column2 > 5",
+      "join_conditions": "a.column3 = b.column3"
+    },
+    {
+      "table_name": "schema2.table2",
+      "join_type": "INNER JOIN",
+      "alias": "b",
+      "where_conditions": "b.column4 = 'active'",
+      "join_conditions": "a.column3 = b.column3"
+    },
+    {
+      "table_name": "schema3.table3",
+      "join_type": "LEFT JOIN",
+      "alias": "c",
+      "where_conditions": "c.column5 IS NOT NULL",
+      "join_conditions": "b.column6 = c.column6"
+    }
+  ],
+  "work_tables": [
+    {
+      "sql": "SELECT * FROM schema4.table4",
+      "join_type": "INNER JOIN",
+      "alias": "d",
+      "where_conditions": "d.column7 = 'yes'",
+      "join_conditions": "c.column8 = d.column8"
+    },
+    {
+      "sql": "SELECT * FROM schema5.table5",
+      "join_type": "LEFT JOIN",
+      "alias": "e",
+      "where_conditions": "e.column9 > 10",
+      "join_conditions": "d.column10 = e.column10"
+    }
+  ]
+}

@@ -1,6 +1,3 @@
-import logging
-from functools import wraps
-from pythonwf.construct_sql.construct_sql import SQLConstructor
 from collections import OrderedDict
 
 
@@ -12,6 +9,16 @@ class EligibleMeta(type):
     """
 
     def __setattr__(cls, name, value):
+        """
+        Overrides the __setattr__ method to include validation checks for specific attributes.
+
+        Args:
+            name (str): The name of the attribute.
+            value: The value of the attribute.
+
+        Raises:
+            ValueError: If the attribute value is invalid.
+        """
         if name in {'_conditions', '_tables', '_unique_identifiers'}:
             if name == "_conditions":
                 cls.validate_conditions(value)
@@ -25,20 +32,6 @@ class EligibleMeta(type):
         elif name in {'_log_location', '_log_level'} and hasattr(cls, name):
             raise ValueError(f"{name} cannot be changed once set.")
         super().__setattr__(name, value)
-
-    @staticmethod
-    def log_validation_error(self, message):
-        """
-        Logs a validation error message to the class instance's logger.
-
-        Args:
-            self: The class instance.
-            message (str): The error message to be logged.
-        """
-        if hasattr(self, 'logger'):
-            self.logger.error(message)
-        else:
-            raise ValueError(message)  # Fallback in case logger isn't set up yet
 
     @staticmethod
     def validate_conditions(conditions):
@@ -195,53 +188,17 @@ class EligibleMeta(type):
                 self.log_validation_error(message)
                 raise ValueError(message)
 
-    @staticmethod
-    def setup_logger(self):
+    def __call__(cls, *args, **kwargs):
         """
-        Sets up a logger for the Eligible class instance.
-
-        The logger will use:
-        - self._log_location as the location for the log.
-        - self._offer_code + '_eligibility.log' as the base name.
-        - self._log_level as the log level.
-        """
-        logger = logging.getLogger(f"{self._offer_code}_eligibility")
-        logger.setLevel(self._log_level)
-        handler = logging.FileHandler(f"{self._log_location}/{self._offer_code}_eligibility.log")
-        handler.setLevel(self._log_level)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        self.logger = logger
-
-    @staticmethod
-    def log_execution(func):
-        """
-        Decorator for logging the execution of a function.
-
-        Logs an entry when the function starts and logs an error if the function raises an exception.
+        Overrides the __call__ method to set up logging and validate non-empty attributes.
 
         Args:
-            func (function): The function to be decorated.
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
 
         Returns:
-            function: The wrapped function with logging.
+            instance: The created instance of the class.
         """
-
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            self.logger.info(f"Running {func.__name__}")
-            try:
-                result = func(self, *args, **kwargs)
-                return result
-            except Exception as e:
-                self.logger.error(f"There was an issue with {func.__name__}:\n\n\t\t{e}")
-                raise
-
-        return wrapper
-
-    def __call__(cls, *args, **kwargs):
         instance = super().__call__(*args, **kwargs)
-        cls.setup_logger(instance)
         cls.validate_non_empty(instance)
         return instance

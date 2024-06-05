@@ -1,34 +1,83 @@
+import functools
+import sys
 import logging
-from functools import wraps
 
 
-class LoggerManager:
-    def __init__(self, log_file='pipeline.log'):
-        self.logger = logging.getLogger('pipeline_logger')
-        self.logger.setLevel(logging.DEBUG)
+class DuplicateFilter(logging.Filter):
+    def __init__(self):
+        super().__init__()
+        self.last_log = None
 
-        # Create a file handler
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
+    def filter(self, record):
+        current_log = (record.levelno, record.msg)
+        if current_log == self.last_log:
+            return False
+        self.last_log = current_log
+        return True
 
-        # Create a logging format
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
 
-        # Add the file handler to the logger
-        self.logger.addHandler(file_handler)
+class CustomLogger:
+    def __init__(self, name, level=logging.INFO, log_file=None, log_format=None, date_format=None):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(level)
 
-    def log_decorator(self, func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            class_name = args[0].__class__.__name__
+        # Set default log format and date format if not provided
+        if log_format is None:
+            log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        if date_format is None:
+            date_format = '%Y-%m-%d %H:%M:%S'
+
+        formatter = logging.Formatter(log_format, datefmt=date_format)
+
+        # Create console handler and set level to debug
+        ch = logging.StreamHandler()
+        ch.setLevel(level)
+        ch.setFormatter(formatter)
+        ch.addFilter(DuplicateFilter())
+        self.logger.addHandler(ch)
+
+        # Create file handler if log_file is specified
+        if log_file is not None:
+            fh = logging.FileHandler(log_file)
+            fh.setLevel(level)
+            fh.setFormatter(formatter)
+            fh.addFilter(DuplicateFilter())
+            self.logger.addHandler(fh)
+
+    def __getattr__(self, attr):
+        return getattr(self.logger, attr)
+
+
+def call_logger(*var_names):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            class_name = self.__class__.__name__
             function_name = func.__name__
+
             self.logger.info(f"Initiating {class_name}.{function_name}")
+
+            def trace_function(frame, event, arg):
+                if event == "line":
+                    if var_names:
+                        for var_name in var_names:
+                            if var_name in frame.f_locals:
+                                self.logger.info(f"{class_name}.{function_name}: {var_name}=\n\t{frame.f_locals[var_name]}".replace('\n', '\n\t\t'))
+                return trace_function
+
             try:
-                result = func(*args, **kwargs)
-                self.logger.info(f"Finishing {class_name}.{function_name}")
+                if var_names:
+                    sys.settrace(trace_function)
+                result = func(self, *args, **kwargs)
+                sys.settrace(None)
+
+                self.logger.info(f"Finished {class_name}.{function_name}")
                 return result
             except Exception as e:
                 self.logger.error(f"Error in {class_name}.{function_name}: {e}")
+                sys.settrace(None)
                 raise
+
         return wrapper
+
+    return decorator

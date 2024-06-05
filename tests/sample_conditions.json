@@ -1,0 +1,23 @@
+{
+  "main": {
+    "BA": [
+      {"sql": "a.column1 IS NOT NULL", "output": "False", "description": "column1 cannot be NULL"},
+      {"sql": "a.column2 = 1 AND b.column1 > 3", "output": "False", "description": "column2 is 1 and column1 is greater than 3"},
+      {"sql": "COALESCE(c.column1, '0') = 0", "output": "False", "description": "c column1 must be 0"}
+    ]
+  },
+  "channel1": {
+    "BA": [
+      {"sql": "d.column3 != ''", "output": "False", "description": "column3 should not be empty"},
+      {"sql": "e.column4 IN ('X', 'Y', 'Z')", "output": "False", "description": "column4 should be one of 'X', 'Y', 'Z'"}
+    ],
+    "A": [
+      {"sql": "f.column5 > 100", "output": "False", "description": "column5 must be greater than 100"},
+      {"sql": "g.column6 LIKE 'prefix%'", "output": "True", "description": "column6 should start with 'prefix'"}
+    ],
+    "B": [
+      {"sql": "h.column7 BETWEEN 10 AND 20", "output": "False", "description": "column7 should be between 10 and 20"},
+      {"sql": "i.column8 IS NULL", "output": "True", "description": "column8 must be NULL"}
+    ]
+  }
+}

@@ -1,10 +1,27 @@
 from pythonwf.validations.eligibility import EligibleMeta
 from pythonwf.connections.teradata import TeradataHandler
 from pythonwf.construct_sql.construct_sql import SQLConstructor
+from pythonwf.logging.logging import call_logger, CustomLogger
 from collections import OrderedDict
 
 
 class Eligible(metaclass=EligibleMeta):
+    """
+    A class to handle eligibility operations in a campaign, using SQL generation and Teradata connections.
+
+    Attributes:
+        campaign_planner (str): The campaign planner.
+        lead (str): The lead person.
+        username (str): The username.
+        offer_code (str): The offer code.
+        conditions (OrderedDict): The conditions for eligibility.
+        tables (dict): The tables involved in the eligibility check.
+        unique_identifiers (list): Unique identifiers used in the eligibility check.
+        _teradata_connection (TeradataHandler): The Teradata connection handler.
+        _sqlconstructor (SQLConstructor): An instance of SQLConstructor to build SQL queries.
+        _teradata_connection (TeradataHandler): The Teradata connection handler.
+    """
+
     def __init__(
             self,
             campaign_planner: str,
@@ -14,14 +31,27 @@ class Eligible(metaclass=EligibleMeta):
             conditions: OrderedDict,
             tables,
             unique_identifiers,
-            teradata_connection: TeradataHandler,
-            logger: LoggerManager
+            logger: CustomLogger,
+            teradata_connection: TeradataHandler or None = None
     ):
-        self._campaign_planner = campaign_planner
-        self._lead = lead
-        self._username = username
-        self._offer_code = offer_code
-        self.logger_manager = logger
+        """
+        Initializes the Eligible class with the provided parameters.
+
+        Args:
+            campaign_planner (str): The campaign planner.
+            lead (str): The lead person.
+            username (str): The username.
+            offer_code (str): The offer code.
+            conditions (OrderedDict): The conditions for eligibility.
+            tables (dict): The tables involved in the eligibility check.
+            unique_identifiers (list): Unique identifiers used in the eligibility check.
+            teradata_connection (TeradataHandler): The Teradata connection handler.
+        """
+        self.campaign_planner = campaign_planner
+        self.lead = lead
+        self.username = username
+        self.offer_code = offer_code
+        self.logger = logger
 
         # this will trigger the @setters for each of these variables below
         self.conditions = conditions
@@ -29,72 +59,121 @@ class Eligible(metaclass=EligibleMeta):
         self.unique_identifiers = unique_identifiers
 
         # prep SQLConstructor property
-        self._sqlconstructor = SQLConstructor(self.conditions, self.tables, self.unique_identifiers, self.username)
+        self._sqlconstructor = SQLConstructor(self.conditions, self.tables, self.unique_identifiers, self.username, self.logger)
         self._teradata_connection = teradata_connection
 
     @property
     def campaign_planner(self):
+        """Getter for campaign_planner."""
         return self._campaign_planner
+
+    @campaign_planner.setter
+    def campaign_planner(self, value):
+        """Setter for campaign_planner."""
+        self._campaign_planner = value
 
     @property
     def lead(self):
+        """Getter for lead."""
         return self._lead
+
+    @lead.setter
+    def lead(self, value):
+        """Setter for lead."""
+        self._lead = value
 
     @property
     def username(self):
+        """Getter for username."""
         return self._username
+
+    @username.setter
+    def username(self, value):
+        """Setter for username."""
+        self._username = value
 
     @property
     def offer_code(self):
+        """Getter for offer_code."""
         return self._offer_code
+
+    @offer_code.setter
+    def offer_code(self, value):
+        """Setter for offer_code."""
+        self._offer_code = value
 
     @property
     def conditions(self):
+        """Getter for conditions."""
         return self._conditions
 
     @conditions.setter
     def conditions(self, conditions):
+        """Setter for conditions."""
         self._conditions = conditions
 
     @property
     def tables(self):
+        """Getter for tables."""
         return self._tables
 
     @tables.setter
     def tables(self, tables):
+        """Setter for tables."""
         self._tables = tables
 
     @property
     def unique_identifiers(self):
+        """Getter for unique_identifiers."""
         return self._unique_identifiers
 
     @unique_identifiers.setter
     def unique_identifiers(self, unique_identifiers):
+        """Setter for unique_identifiers."""
         self._unique_identifiers = unique_identifiers
 
+    @call_logger()
     def _create_work_tables(self):
+        """
+        Creates work tables based on the SQL generated by the SQLConstructor.
+
+        Executes the SQL queries to create the work tables and track them.
+        """
         work_queries = self._sqlconstructor.eligible.generate_work_table_sql()
 
         for query in work_queries:
-            sql = query.get('query')
+            self.logger.info(f'{self.__class__}._create_work_tables \n\t\t{query=}')
+
+            work_sql = query.get('query')
             collect_sql = query.get('collect_query')
             table_name = query.get('table_name')
 
-            if sql:
-                self._teradata_connection.execute_query(sql)
-                self._teradata_connection.tracking.track_table(table_name)
-            if collect_sql:
-                self._teradata_connection.execute_query(collect_sql)
+            # only attempt to execute if the Teradata connection isn't set
+            if self._teradata_connection is not None:
+                if work_sql:
+                    self._teradata_connection.execute_query(work_sql)
+                    self._teradata_connection.tracking.track_table(table_name)
+                if collect_sql:
+                    self._teradata_connection.execute_query(collect_sql)
+            else:
+                self.logger.warning('Eligible._teradata_connection is None, so _create_work_table queries are not executed')
 
+    @call_logger()
     def generate_eligibility(self):
+        """
+        Generates eligibility by creating work tables and executing the eligibility SQL.
+
+        Executes the main eligibility SQL and tracks the resulting table.
+        """
         self._create_work_tables()
-        eligibility_query = self._sqlconstructor.eligible.generate_eligibility_sql()
+        eligibility_query = self._sqlconstructor.eligible.generate_eligible_sql()
         sql = eligibility_query.get('query')
         collect_sql = eligibility_query.get('collect_query')
         table_name = eligibility_query.get('table_name')
 
-        self._teradata_connection.execute_query(sql)
-        self._teradata_connection.tracking.track_table(table_name)
-        self._teradata_connection.execute_query(collect_sql)
-
-
+        if self._teradata_connection is not None:
+            self._teradata_connection.execute_query(sql)
+            self._teradata_connection.tracking.track_table(table_name)
+            self._teradata_connection.execute_query(collect_sql)
+        else:
+            self.logger.warning('Eligible._teradata_connection is None, so generate_eligibility queries are not executed')
