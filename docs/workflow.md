@@ -25,4 +25,22 @@ graph TD
         C --> C1
         C1 --> C2
     end
+
+    subgraph Eligible Class
+        A1 --> A3[SQLConstructor]
+        A3 --> A4[EligibilitySQLConstructor]
+        A3 --> A5[TeradataHandler]
+    end
+
+    subgraph Waterfall Class
+        B1 --> B3[SQLConstructor]
+        B3 --> B4[WaterfallSQLConstructor]
+        B3 --> B5[TeradataHandler]
+    end
+
+    subgraph Output Class
+        C1 --> C3[SQLConstructor]
+        C3 --> C4[OutputFileSQLConstructor]
+        C3 --> C5[TeradataHandler]
+    end
 ```
