@@ -123,6 +123,144 @@ The `CustomLogger` class provides custom logging functionality.
 - `info(message)`: Logs an info message.
 - `error(message)`: Logs an error message.
 
+## Specific Structures and File Types
+
+### Eligible Class
+- **campaign_planner (str)**: The campaign planner.
+- **lead (str)**: The lead person.
+- **username (str)**: The username.
+- **offer_code (str)**: The offer code.
+- **conditions (OrderedDict)**: The conditions for eligibility.
+  - Example layout:
+    ```python
+    conditions = OrderedDict({
+        'main': {
+            'BA': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here'},
+                ...
+            ],
+            ...
+        },
+        'some_channel': {
+            'BA': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here'},
+                ...
+            ],
+            'segment1': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here'},
+                ...
+            ]
+        }
+    })
+    ```
+
+- **tables (dict)**: The tables involved in the eligibility check.
+  - Example layout:
+    ```python
+    tables = {
+        'tables': [
+            {'table_name': 'schema_name.table_name', 'join_type': 'valid join type', 'alias': 'alias', 'where_conditions': 'sql code', 'join_conditions': 'sql code'},
+            ...
+        ],
+        'work_tables': [
+            {'sql': 'sql code', 'join_type': 'valid join type', 'alias': 'alias', 'where_conditions': 'sql code', 'join_conditions': 'sql code'},
+            ...
+        ]
+    }
+    ```
+
+### Waterfall Class
+- **conditions (Dict[str, Dict[str, Any]])**: Conditions for eligibility checks.
+  - Example layout:
+    ```python
+    conditions = {
+        'channel1': {
+            'template1': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here', 'column_name': 'column1'},
+                ...
+            ],
+            ...
+        },
+        ...
+    }
+    ```
+
+### Output Class
+- **output_instructions (dict)**: Instructions for generating output files.
+  - Example layout:
+    ```python
+    output_instructions = {
+        'channel_name': {
+            'sql': 'PLACE SQL HERE',
+            'file_location': '/path/to/file',  # does not end with a forward slash
+            'file_base_name': 'base_name_without_file_extension',
+            'output_options': {
+                'format': 'parquet', 'csv', 'excel',  # only three options
+                'additional_arguments': {...}  # these must match the python arguments for pandas.to_csv, pandas.to_parquet, pandas.to_excel
+            }
+        },
+        ...
+    }
+    ```
+
+### SQLConstructor Class
+- **conditions (OrderedDict)**: Conditions for eligibility checks.
+  - Example layout:
+    ```python
+    conditions = OrderedDict({
+        'main': {
+            'BA': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here'},
+                ...
+            ],
+            ...
+        },
+        'some_channel': {
+            'BA': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here'},
+                ...
+            ],
+            'segment1': [
+                {'sql': 'some_sql', 'output': False, 'description': 'some description here'},
+                ...
+            ]
+        }
+    })
+    ```
+
+- **tables (Dict[str, List[Dict[str, Any]]])**: Tables involved in the eligibility and waterfall processes.
+  - Example layout:
+    ```python
+    tables = {
+        'tables': [
+            {'table_name': 'schema_name.table_name', 'join_type': 'valid join type', 'alias': 'alias', 'where_conditions': 'sql code', 'join_conditions': 'sql code'},
+            ...
+        ],
+        'work_tables': [
+            {'sql': 'sql code', 'join_type': 'valid join type', 'alias': 'alias', 'where_conditions': 'sql code', 'join_conditions': 'sql code'},
+            ...
+        ]
+    }
+    ```
+
+### TeradataHandler Class
+- **host (str)**: The Teradata host.
+- **user (str)**: The username.
+- **password (str)**: The password.
+- **logmech (str)**: The log mechanism.
+
+### CustomLogger Class
+- **name (str)**: The name of the logger.
+- **level (int)**: The logging level.
+- **log_file (Optional[str])**: The log file path.
+- **log_format (Optional[str])**: The log format.
+- **date_format (Optional[str])**: The date format.
+
+### Functions
+- **generate_eligibility()**: Generates eligibility by creating work tables and executing the eligibility SQL.
+- **generate_waterfall()**: Generates the waterfall report by creating base tables, analyzing eligibility, creating dataframes, and saving the report to an Excel file.
+- **create_output_file()**: Outputs the file for the specified channel(s).
+
 ## Usage Examples
 
 ### Example 1: Generating Eligibility
