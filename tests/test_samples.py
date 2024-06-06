@@ -31,7 +31,6 @@ output_arguments = {
         'output_options': {'format': 'csv', 'additional_arguments': ''}
     }
 }
-print(type(output))
 output.output_instructions = output_arguments
 output.create_output_file()
 

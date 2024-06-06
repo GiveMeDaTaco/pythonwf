@@ -132,7 +132,7 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
 
         return tables.get('tables'), tables.get('work_tables')
 
-    @call_logger('parsed_unique_identifiers')
+    @call_logger()
     def _parse_unique_identifiers(self) -> None:
         """
         Parses the unique identifiers and stores the parsed values in the _parsed_unique_identifiers attribute.

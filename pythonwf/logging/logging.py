@@ -16,6 +16,10 @@ class DuplicateFilter(logging.Filter):
         return True
 
 
+# Global variable to track indentation level
+INDENT_LEVEL = 0
+
+
 class CustomLogger:
     def __init__(self, name, level=logging.INFO, log_file=None, log_format=None, date_format=None):
         self.logger = logging.getLogger(name)
@@ -47,15 +51,31 @@ class CustomLogger:
     def __getattr__(self, attr):
         return getattr(self.logger, attr)
 
+    def indent_log(self, message):
+        global INDENT_LEVEL
+        indent = ' ' * (INDENT_LEVEL * 4)
+        return f"{indent}{message}"
+
+    def info(self, message, *args, **kwargs):
+        message = self.indent_log(message)
+        self.logger.info(message, *args, **kwargs)
+
+    def error(self, message, *args, **kwargs):
+        message = self.indent_log(message)
+        self.logger.error(message, *args, **kwargs)
+
 
 def call_logger(*var_names):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
+            global INDENT_LEVEL
+
             class_name = self.__class__.__name__
             function_name = func.__name__
 
             self.logger.info(f"Initiating {class_name}.{function_name}")
+            INDENT_LEVEL += 1
 
             def trace_function(frame, event, arg):
                 if event == "line":
@@ -71,9 +91,11 @@ def call_logger(*var_names):
                 result = func(self, *args, **kwargs)
                 sys.settrace(None)
 
+                INDENT_LEVEL -= 1
                 self.logger.info(f"Finished {class_name}.{function_name}")
                 return result
             except Exception as e:
+                INDENT_LEVEL -= 1
                 self.logger.error(f"Error in {class_name}.{function_name}: {e}")
                 sys.settrace(None)
                 raise

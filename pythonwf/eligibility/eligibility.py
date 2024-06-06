@@ -142,7 +142,7 @@ class Eligible(metaclass=EligibleMeta):
         work_queries = self._sqlconstructor.eligible.generate_work_table_sql()
 
         for query in work_queries:
-            self.logger.info(f'{self.__class__}._create_work_tables \n\t\t{query=}')
+            self.logger.info(f'{self.__class__}._create_work_tables {query=}')
 
             work_sql = query.get('query')
             collect_sql = query.get('collect_query')
