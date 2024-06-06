@@ -23,7 +23,7 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
         _EligibilitySQLConstructor (Optional[EligibilitySQLConstructor]): SQL constructor for eligibility.
         _WaterfallSQLConstructor (Optional[WaterfallSQLConstructor]): SQL constructor for waterfall.
         _OutputFileSQLConstructor (Optional[OutputFileSQLConstructor]): SQL constructor for output files.
-        _conditions_column_mappings (Dict[str, Any]): Mappings of conditions to columns.
+        _waterfall_conditions_column_mappings (Dict[str, Any]): Mappings of conditions to columns.
         _parsed_unique_identifiers (Dict[str, Any]): Parsed unique identifiers.
     """
 
@@ -45,7 +45,7 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
             username (str): The username.
         """
         # properties used just for validations
-        self._conditions_column_mappings = dict()
+        self._waterfall_conditions_column_mappings = dict()
         self._parsed_unique_identifiers = dict()
 
         # set properties
@@ -61,6 +61,17 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
         self._EligibilitySQLConstructor: EligibilitySQLConstructor or None = None
         self._WaterfallSQLConstructor: WaterfallSQLConstructor or None = None
         self._OutputFileSQLConstructor = None
+
+        # prep for output variables
+        self._output_queries = None
+
+    @property
+    def output_queries(self) -> dict:
+        return self._output_queries
+
+    @output_queries.setter
+    def output_queries(self, output_queries: dict) -> None:
+        self._output_queries = output_queries
 
     def _generate_table_name(self) -> str:
         """
@@ -240,7 +251,7 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
 
         conditions_column_mappings = result
 
-        self._conditions_column_mappings = conditions_column_mappings
+        self._waterfall_conditions_column_mappings = conditions_column_mappings
 
     @property
     def conditions(self) -> OrderedDict:
@@ -301,7 +312,7 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
         if self._WaterfallSQLConstructor is None:
             self._WaterfallSQLConstructor = WaterfallSQLConstructor(
                 self.conditions,
-                self._conditions_column_mappings,
+                self._waterfall_conditions_column_mappings,
                 self._backend_tables,
                 self._parsed_unique_identifiers,
                 self.logger
@@ -312,7 +323,12 @@ class SQLConstructor(metaclass=ConstructSQLMeta):
     def output_file(self) -> OutputFileSQLConstructor:
         """Getter for output_file."""
         if self._OutputFileSQLConstructor is None:
-            self._OutputFileSQLConstructor = OutputFileSQLConstructor()
+            self._OutputFileSQLConstructor = OutputFileSQLConstructor(
+                self._output_queries,
+                self.conditions,
+                self._backend_tables.get('eligibility'),
+                self.logger
+            )
         return self._OutputFileSQLConstructor
 
     @property

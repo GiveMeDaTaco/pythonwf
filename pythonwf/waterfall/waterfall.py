@@ -131,8 +131,6 @@ class Waterfall:
         """Setter for conditions."""
         self._conditions = value
 
-
-
     def _save_results(self, identifier: str, data: pd.DataFrame) -> None:
         """
         Saves the results of a query to the _query_results dictionary.
@@ -213,8 +211,21 @@ class Waterfall:
                 df = df.set_index('Index')
                 self._save_results(identifier, df)
 
+    def _step1_create_base_tables(self):
+        queries = self._sqlconstructor.waterfall.generate_unique_identifier_details_sql()
+
+        self.logger.info(f'{self.__class__}.step1_create_base_tables {queries=}')
+
+        for identifier, details in queries.items():
+            query = details.get('sql')
+            table_name = details.get('table_name')
+
+            if self._teradata_connection is not None:
+                self._teradata_connection.execute_query(query)
+                self._teradata_connection.tracking.track_table(table_name)
+
     @call_logger()
-    def _step1_analyze_eligibility(self) -> None:
+    def _step2_analyze_eligibility(self) -> None:
         """
         Analyzes the eligibility by calculating unique drops, incremental drops, regain, and remaining records.
         The order of calculations is important for correct results.
@@ -225,7 +236,7 @@ class Waterfall:
         self._calculate_remaining()
 
     @call_logger
-    def _step2_create_dataframes(self) -> None:
+    def _step3_create_dataframes(self) -> None:
         """
         Creates dataframes from the query results and compiles them into a dictionary.
         """
@@ -245,7 +256,7 @@ class Waterfall:
             self._compiled_dataframes[identifier] = df
 
     @call_logger
-    def _step3_create_excel(self):
+    def _step4_create_excel(self):
         # Create a Pandas Excel writer using XlsxWriter as the engine
         writer = pd.ExcelWriter(f'{self.waterfall_location}/{self.offer_code}_Waterfall_{self.current_date}.xlsx', engine='xlsxwriter')
 
@@ -307,3 +318,9 @@ class Waterfall:
 
         # Save the Excel file
         writer.save()
+
+    def generate_waterfall(self):
+        self._step1_create_base_tables()
+        self._step2_analyze_eligibility()
+        self._step3_create_dataframes()
+        self._step4_create_excel()

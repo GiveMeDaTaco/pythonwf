@@ -45,14 +45,14 @@ class WaterfallSQLConstructor:
         self._remaining_sql = None
 
     @call_logger()
-    def generate_unique_identifier_details_sql(self) -> Dict[str, str]:
+    def generate_unique_identifier_details_sql(self) ->  Dict[str, Dict[str, str]]:
         """
         Generates SQL queries to create tables with unique identifier details.
 
         Returns:
             Dict[str, str]: A dictionary of SQL queries keyed by unique identifiers.
         """
-        queries: Dict[str, str] = {}
+        queries:  Dict[str, Dict[str, str]] = {}
 
         column_names: List[str] = []
         for channel, templates in self.conditions.items():
@@ -76,7 +76,10 @@ class WaterfallSQLConstructor:
                         {self._backend_tables.get('eligibility')}) WITH DATA PRIMARY INDEX prindx ({identifier});
             """
 
-            queries[identifier] = sql
+            queries[identifier] = {
+                'sql': sql,
+                'table_name': identifier_details_table
+            }
 
         return queries
 
@@ -239,7 +242,7 @@ class WaterfallSQLConstructor:
                 else:
                     prior_failed_checks = ''
 
-                case_statement = f"total_rows - SUM(CASE WHEN {passing_checks} {prior_failed_checks} THEN 1 ELSE 0 END) AS remaining_{check}"
+                case_statement = f"total_rows - SUM(CASE WHEN {passing_checks} {prior_failed_checks} THEN 1 ELSE 0 END) AS {check}"
                 case_statements.append(case_statement)
                 previous_checks.append(check)
 
