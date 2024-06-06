@@ -2,45 +2,53 @@
 
 ```mermaid
 graph TD
-    A[Eligible] --> B[Waterfall]
-    B --> C[Output]
+    A[Load Conditions] --> B[Load Tables]
+    B --> C[Define Variables]
+    C --> D[Create CustomLogger]
+    D --> E[Create Eligible]
+    E --> F[Generate Eligibility]
+    F --> G[Create Waterfall from Eligible]
+    G --> H[Generate Waterfall]
+    H --> I[Create Output from Waterfall]
+    I --> J[Set Output Instructions]
+    J --> K[Create Output File]
 
     subgraph Initialization
-        A1[Initialize Eligible]
-        A2[Generate Eligibility]
-        A --> A1
-        A1 --> A2
+        E1[Initialize Eligible]
+        E2[Generate Eligibility]
+        E --> E1
+        E1 --> E2
     end
 
     subgraph Waterfall Generation
-        B1[Initialize Waterfall]
-        B2[Generate Waterfall]
-        B --> B1
-        B1 --> B2
+        G1[Initialize Waterfall]
+        G2[Generate Waterfall]
+        G --> G1
+        G1 --> G2
     end
 
     subgraph Output Generation
-        C1[Initialize Output]
-        C2[Create Output File]
-        C --> C1
-        C1 --> C2
+        I1[Initialize Output]
+        I2[Create Output File]
+        I --> I1
+        I1 --> I2
     end
 
     subgraph Eligible Class
-        A1 --> A3[SQLConstructor]
-        A3 --> A4[EligibilitySQLConstructor]
-        A3 --> A5[TeradataHandler]
+        E1 --> E3[SQLConstructor]
+        E3 --> E4[EligibilitySQLConstructor]
+        E3 --> E5[TeradataHandler]
     end
 
     subgraph Waterfall Class
-        B1 --> B3[SQLConstructor]
-        B3 --> B4[WaterfallSQLConstructor]
-        B3 --> B5[TeradataHandler]
+        G1 --> G3[SQLConstructor]
+        G3 --> G4[WaterfallSQLConstructor]
+        G3 --> G5[TeradataHandler]
     end
 
     subgraph Output Class
-        C1 --> C3[SQLConstructor]
-        C3 --> C4[OutputFileSQLConstructor]
-        C3 --> C5[TeradataHandler]
+        I1 --> I3[SQLConstructor]
+        I3 --> I4[OutputFileSQLConstructor]
+        I3 --> I5[TeradataHandler]
     end
 ```
