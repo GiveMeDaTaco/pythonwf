@@ -256,68 +256,101 @@ class Waterfall:
             self._compiled_dataframes[identifier] = df
 
     @call_logger
-    def _step4_create_excel(self):
-        # Create a Pandas Excel writer using XlsxWriter as the engine
-        writer = pd.ExcelWriter(f'{self.waterfall_location}/{self.offer_code}_Waterfall_{self.current_date}.xlsx', engine='xlsxwriter')
+    from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import PatternFill, Font
 
-        # Write the first dataframe values starting from cell A4
-        pd.DataFrame(self.conditions).to_excel(writer, sheet_name='Waterfall', startrow=3, header=False, index=False)
+def _step4_create_excel(self):
+    # Create a workbook and add a worksheet
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Waterfall'
 
-        # Write other dataframes starting from appropriate columns
-        start_col = 4
-        for key, df in self._query_results.items():
-            df.columns.name = key
-            df.to_excel(writer, sheet_name='Waterfall', startrow=3, startcol=start_col, header=False, index=False)
-            start_col += len(df.columns) + 1
+    # Add header information
+    header = f'[{self.offer_code}] [CP: {self.campaign_planner}] [LEAD: {self.lead}] [DATE: {self.current_date}]'
+    ws['A1'] = header
+    ws['A1'].font = Font(size=18)
 
-        # Access the workbook and worksheet objects
-        workbook = writer.book
-        worksheet = writer.sheets['Waterfall']
+    # Add values to specific cells
+    ws['A2'] = 'Checks'
+    ws['B2'] = 'Criteria'
+    ws['C2'] = 'Description'
+    ws['C3'] = 'Starting Population'
 
-        # Insert blank row when channel name changes and rename values in column A
-        df_combined = pd.concat([self.conditions] + list(self._query_results.values()), ignore_index=True)
-        df_combined.reset_index(drop=True, inplace=True)
+    # Write the first dataframe values starting from cell A4
+    for r_idx, row in enumerate(dataframe_to_rows(pd.DataFrame(self.conditions), index=False, header=False), start=4):
+        for c_idx, value in enumerate(row, start=1):
+            ws.cell(row=r_idx, column=c_idx, value=value)
 
-        channel_name_prev = ''
-        for idx, row in df_combined.iterrows():
-            if pd.isna(row['column_name']):
-                continue
-            channel_name, template, check_number = row['column_name'].split('_', 2)
-            if channel_name != channel_name_prev and idx != 0:
-                worksheet.write_blank(idx + 4, 0, '', workbook.add_format({'bg_color': 'white'}))
-            worksheet.write(idx + 4, 0, check_number)
-            channel_name_prev = channel_name
+    # Write other dataframes starting from appropriate columns and add headers
+    start_col = 5
+    for key, df in self._query_results.items():
+        for col_num, value in enumerate(df.columns, start=start_col):
+            cell = ws.cell(row=2, column=col_num)
+            cell.value = value
+            cell.fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=False), start=4):
+            for c_idx, value in enumerate(row, start=start_col):
+                ws.cell(row=r_idx, column=c_idx, value=value)
+        start_col += len(df.columns) + 1
 
-        # Add header information
-        header = f'[{self.offer_code}] [CP: {self.campaign_planner}] [LEAD: {self.lead}] [DATE: {self.current_date}]'
-        worksheet.write('A1', header, workbook.add_format({'font_size': 18}))
+    # Insert blank row when channel name changes and rename values in column A
+    df_combined = pd.concat([self.conditions] + list(self._query_results.values()), ignore_index=True)
+    df_combined.reset_index(drop=True, inplace=True)
 
-        # Add values to specific cells
-        worksheet.write('A2', 'Checks')
-        worksheet.write('B2', 'Criteria')
-        worksheet.write('C2', 'Description')
-        worksheet.write('C3', 'Starting Population')
+    channel_name_prev = ''
+    for idx, row in df_combined.iterrows():
+        if pd.isna(row['column_name']):
+            continue
+        channel_name, template, check_number = row['column_name'].split('_', 2)
+        if channel_name != channel_name_prev and idx != 0:
+            ws.insert_rows(idx + 5)
+        ws.cell(row=idx + 5, column=1, value=check_number)
+        channel_name_prev = channel_name
 
-        # Add values to row 2 for other dataframes
-        start_col = 4
-        for key, df in self._query_results.items():
-            for col_num, value in enumerate(df.columns):
-                worksheet.write(1, start_col + col_num, value, workbook.add_format({'bg_color': '#87CEEB'}))
-            start_col += len(df.columns) + 1
+    # Loop through column A and insert a blank row when channel name changes, then leave only the checknumber
+    channel_name_prev = ''
+    for row in range(4, len(df_combined) + 5):
+        cell = ws.cell(row=row, column=1)
+        if cell.value is None:
+            continue
+        parts = cell.value.split('_')
+        channel_name = parts[0]
+        check_number = parts[-1]
+        if channel_name != channel_name_prev and row != 4:
+            ws.insert_rows(row)
+        cell.value = check_number
+        channel_name_prev = channel_name
 
-        # Formatting
-        tan_format = workbook.add_format({'bg_color': '#D2B48C'})
-        gray_format = workbook.add_format({'bg_color': '#D3D3D3'})
+    # Formatting
+    tan_fill = PatternFill(start_color='D2B48C', end_color='D2B48C', fill_type='solid')
+    gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid')
+    header_fill = PatternFill(start_color='01204E', end_color='01204E', fill_type='solid')
+    col_a_fill = PatternFill(start_color='F6DCAC', end_color='F6DCAC', fill_type='solid')
+    blank_fill = PatternFill(start_color='028391', end_color='028391', fill_type='solid')
 
-        for row in range(3, len(df_combined) + 4):
-            worksheet.write(row, 0, '', tan_format)
+    # Apply header fill color to row 2
+    for col in range(1, start_col):
+        ws.cell(row=2, column=col).fill = header_fill
 
-        for col in range(4, start_col, len(df.columns) + 1):
-            for row in range(3, len(df_combined) + 4):
-                worksheet.write(row, col - 1, '', gray_format)
+    # Apply color to column A starting from row 3
+    for row in range(3, len(df_combined) + 5):
+        ws.cell(row=row, column=1).fill = col_a_fill
 
-        # Save the Excel file
-        writer.save()
+    # Apply color to blank rows and columns
+    for row in range(4, len(df_combined) + 5):
+        if ws.cell(row=row, column=2).value is None:
+            for col in range(1, start_col):
+                ws.cell(row=row, column=col).fill = blank_fill
+
+    for col in range(1, start_col):
+        if ws.cell(row=4, column=col).value is None:
+            for row in range(3, len(df_combined) + 5):
+                ws.cell(row=row, column=col).fill = blank_fill
+
+    # Save the Excel file
+    wb.save(f'{self.waterfall_location}/{self.offer_code}_Waterfall_{self.current_date}.xlsx')
+
 
     def generate_waterfall(self):
         self._step1_create_base_tables()
